@@ -4,4 +4,16 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "claude-code-sdk>=0.0.20",
+    "docker>=7.1.0",
+    "fastapi>=0.116.1",
+    "gitpython>=3.1.45",
+    "loguru>=0.7.3",
+    "pydantic>=2.11.7",
+    "sarge>=0.1.7.post1",
+    "uvicorn>=0.35.0",
+]
+[tool.ruff.lint]
+select = ["C4", "E", "F", "I", "PERF", "UP"]
+ignore = ["PERF203", "E501"]
