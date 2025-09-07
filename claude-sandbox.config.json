@@ -12,5 +12,6 @@
     "bashTimeout": 600000,
     "containerPrefix": "lainnet",
     "claudeConfigPath": "~/.claude.json",
-    "defaultShell": "bash"
+    "defaultShell": "bash",
+    "includeUntracked": true
 }

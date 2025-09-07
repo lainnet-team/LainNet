@@ -1,18 +1,18 @@
 import asyncio
 import json
 import pathlib
-import socket
 import subprocess
 from typing import override
 
 from git import Repo
 from loguru import logger
+from pydantic import Field
 
 from docker import DockerClient
 from docker.models.containers import Container
 
-from ..utils.network import wait_ports_ready
-from .base import Sandbox
+from ..utils.network import available_port
+from .base import Sandbox, SandboxSession
 
 CLAUDE_SANDBOX_CONFIG = json.load(open("claude-sandbox.config.json"))
 
@@ -25,7 +25,7 @@ class ClaudeSandbox(Sandbox):
         super().__init__(**kwargs)
         self._client: DockerClient = DockerClient()
         self._container: Container = None
-        self._processx = None
+        self._process = None
 
     @property
     def name(self):
@@ -35,9 +35,31 @@ class ClaudeSandbox(Sandbox):
         workspace = pathlib.Path("./workspaces").absolute() / self.name
         if workspace.exists():
             return True, workspace
+        claude = pathlib.Path("./claude").absolute() / self.name
+
+        # Create a copy of the config to avoid mutating the global
+        config = CLAUDE_SANDBOX_CONFIG.copy()
+        config["mounts"] = config.get("mounts", []).copy()
+        config["mounts"].extend(
+            [
+                {
+                    "type": "bind",
+                    "source": workspace.as_posix(),
+                    "target": "/workspace",
+                    "readonly": False,
+                },
+                {
+                    "type": "bind",
+                    "source": claude.as_posix(),
+                    "target": "/home/claude/.claude",
+                    "readonly": False,
+                },
+            ]
+        )
+        claude.mkdir(parents=True, exist_ok=True)
         repo = Repo.init(workspace)
         with open(workspace / "claude-sandbox.config.json", "w") as f:
-            f.write(json.dumps(CLAUDE_SANDBOX_CONFIG, indent=4))
+            f.write(json.dumps(config, indent=4))
         repo.index.add(["claude-sandbox.config.json"])
         repo.index.commit("Initial commit")
         return False, workspace
@@ -54,6 +76,32 @@ class ClaudeSandbox(Sandbox):
 
         raise ClaudeSandboxError("Container not found after timeout")
 
+    async def _wait_envd_ready(
+        self, host: str, port: int, health_endpoint: str = "", timeout: int = 60
+    ) -> bool:
+        """Wait for envd service to be ready by checking health endpoint"""
+        import time
+
+        import aiohttp
+
+        start_time = time.time()
+        url = f"http://{host}:{port}/{health_endpoint}"
+
+        async with aiohttp.ClientSession() as session:
+            while time.time() - start_time < timeout:
+                try:
+                    async with session.get(
+                        url, timeout=aiohttp.ClientTimeout(total=2)
+                    ) as resp:
+                        if resp.status == 200:
+                            logger.info(f"Envd health check passed at {url}")
+                            return True
+                except (TimeoutError, aiohttp.ClientError) as e:
+                    logger.debug(f"Health check failed: {e}")
+                    await asyncio.sleep(1)
+
+        return False
+
     async def _start_envd(self, port: int, timeout: int = 60):
         cmd = [
             "python3",
@@ -67,62 +115,55 @@ class ClaudeSandbox(Sandbox):
             "--app-dir",
             "/app",
         ]
-        self._container.exec_run(cmd, stdout=False, stderr=False)
+        # Run in detached mode to avoid blocking
+        # When detach=True, exec_run returns immediately without exit_code
+        self._container.exec_run(cmd, detach=True, workdir="/app")
 
-        ok = await wait_ports_ready("localhost", port, timeout=timeout)
+        # Wait for service to be ready using health endpoint
+        ok = await self._wait_envd_ready("localhost", port, timeout=timeout)
         if not ok:
             raise ClaudeSandboxError("Envd not started after timeout")
-
-    def _available_port(self) -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("0.0.0.0", 0))
-            return s.getsockname()[1]
 
     @override
     async def start(self, timeout: int = 60):
         cmd: list[str]
         existed, workspace = self._init_workspace()
-        if existed:
-            self._container = await self._get_container(timeout)
-            cmd = [
-                "claude-sandbox",
-                "attach",
-                self._container.id,
-                "--no-web",
-            ]
-            self._process = subprocess.Popen(
-                cmd, cwd=workspace, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
-        else:
-            port = self._available_port()
-            cmd = [
-                "claude-sandbox",
-                "start",
-                "--name",
-                self.name,
-                "--no-web",
-                "--envd-port",
-                str(port),
-            ]
-            self._process = subprocess.Popen(
-                cmd, cwd=workspace, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+        logger.info(f"workspace status: {'existed' if existed else 'new'}")
+        cmd = [
+            "claude-sandbox",
+            "start",
+            "--name",
+            self.name,
+            "--no-web",
+            "--envd-port",
+            str(self.envd_port),
+        ]
+        self._process = subprocess.Popen(
+            cmd,
+            cwd=workspace,
+            stdout=open(workspace / "stdout.txt", "w"),
+            stderr=open(workspace / "stderr.txt", "w"),
+        )
 
-            self._container = await self._get_container(timeout)
+        self._container = await self._get_container(timeout)
 
-            await self._start_envd(port)
+        await self._start_envd(self.envd_port)
 
     @override
     async def stop(self):
         if self._process is None or self._container is None:
             raise ClaudeSandboxError("Stop Failed: Sandbox not found")
         self._process.terminate()
+        self._container.stop()
+        self._container.remove()
 
     async def __aenter__(self, timeout: int = 60):
+        logger.info(f"Starting sandbox {self.name}...")
         await self.start(timeout)
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback):
+        logger.info(f"Stopping sandbox {self.name}...")
         await self.stop()
 
     async def exec(self, cmd: list[str]) -> str:
@@ -130,3 +171,19 @@ class ClaudeSandbox(Sandbox):
             raise ClaudeSandboxError("Exec Failed: Sandbox not found")
         result = self._container.exec_run(cmd)
         return result.exit_code, result.output
+
+
+class ClaudeSandboxSession(SandboxSession[ClaudeSandbox]):
+    sandbox: ClaudeSandbox = Field(
+        default_factory=lambda: ClaudeSandbox(envd_port=available_port())
+    )
+
+    async def query(self, query: str, continue_conversation: bool = True):
+        return await self.send_request(
+            "POST",
+            "/query",
+            json={
+                "query": query,
+                "continue_conversation": continue_conversation,
+            },
+        )
