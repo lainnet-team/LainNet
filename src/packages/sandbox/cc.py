@@ -6,12 +6,10 @@ from typing import override
 
 from git import Repo
 from loguru import logger
-from pydantic import Field
 
 from docker import DockerClient
 from docker.models.containers import Container
 
-from ..utils.network import available_port
 from .base import Sandbox, SandboxSession
 
 CLAUDE_SANDBOX_CONFIG = json.load(open("claude-sandbox.config.json"))
@@ -174,10 +172,6 @@ class ClaudeSandbox(Sandbox):
 
 
 class ClaudeSandboxSession(SandboxSession[ClaudeSandbox]):
-    sandbox: ClaudeSandbox = Field(
-        default_factory=lambda: ClaudeSandbox(envd_port=available_port())
-    )
-
     async def query(self, query: str, continue_conversation: bool = True):
         return await self.send_request(
             "POST",
@@ -187,3 +181,9 @@ class ClaudeSandboxSession(SandboxSession[ClaudeSandbox]):
                 "continue_conversation": continue_conversation,
             },
         )
+
+
+def claude_sandbox_session(sandbox_id: str, envd_port: int):
+    return ClaudeSandboxSession(
+        sandbox=ClaudeSandbox(id=sandbox_id, envd_port=envd_port)
+    )
