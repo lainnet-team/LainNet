@@ -2,6 +2,7 @@ import asyncio
 import json
 import pathlib
 import subprocess
+from datetime import datetime
 from typing import override
 
 from git import Repo
@@ -31,9 +32,12 @@ class ClaudeSandbox(Sandbox):
 
     def _init_workspace(self) -> tuple[bool, pathlib.Path]:
         workspace = pathlib.Path("./workspaces").absolute() / self.name
+        claude = pathlib.Path("./claude").absolute() / self.name
+        logs = workspace / "logs"
+        claude.mkdir(parents=True, exist_ok=True)
+        logs.mkdir(parents=True, exist_ok=True)
         if workspace.exists():
             return True, workspace
-        claude = pathlib.Path("./claude").absolute() / self.name
 
         # Create a copy of the config to avoid mutating the global
         config = CLAUDE_SANDBOX_CONFIG.copy()
@@ -54,7 +58,7 @@ class ClaudeSandbox(Sandbox):
                 },
             ]
         )
-        claude.mkdir(parents=True, exist_ok=True)
+
         repo = Repo.init(workspace)
         with open(workspace / "claude-sandbox.config.json", "w") as f:
             f.write(json.dumps(config, indent=4))
@@ -62,15 +66,26 @@ class ClaudeSandbox(Sandbox):
         repo.index.commit("Initial commit")
         return False, workspace
 
-    async def _get_container(self, timeout: int = 60) -> Container:
+    async def _get_container(
+        self, stdout_path: pathlib.Path, timeout: int = 60
+    ) -> Container:
         for _ in range(timeout):
-            containers = self._client.containers.list(filters={"name": self.name})
-            if containers:
-                logger.info(f"Container {self.name} found, starting...")
-                return containers[0]
+            if stdout_path.exists():
+                logger.info(f"Container {self.name} stdout file found, starting...")
+                with open(stdout_path) as f:
+                    for line in f:
+                        if "Started container:" in line:
+                            logger.info(f"Container {self.name} found, starting...")
+                            container_id = line.split(" ")[-1].strip()
+                            logger.info(f"Container {self.name} id: {container_id}")
+                            return self._client.containers.get(container_id)
             else:
-                logger.info(f"Container {self.name} not found, waiting for 1 second...")
-                await asyncio.sleep(1)
+                logger.info(
+                    f"Container {self.name} stdout file {stdout_path} not found, waiting for 1 second..."
+                )
+
+            logger.info(f"Container {self.name} not found, waiting for 1 second...")
+            await asyncio.sleep(1)
 
         raise ClaudeSandboxError("Container not found after timeout")
 
@@ -124,7 +139,6 @@ class ClaudeSandbox(Sandbox):
 
     @override
     async def start(self, timeout: int = 60):
-        cmd: list[str]
         existed, workspace = self._init_workspace()
         logger.info(f"workspace status: {'existed' if existed else 'new'}")
         cmd = [
@@ -136,14 +150,21 @@ class ClaudeSandbox(Sandbox):
             "--envd-port",
             str(self.envd_port),
         ]
+
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+
         self._process = subprocess.Popen(
             cmd,
             cwd=workspace,
-            stdout=open(workspace / "stdout.txt", "w"),
-            stderr=open(workspace / "stderr.txt", "w"),
+            stdout=open(workspace / "logs" / f"stdout-{timestamp}.txt", "w"),
+            stderr=open(workspace / "logs" / f"stderr-{timestamp}.txt", "w"),
         )
 
-        self._container = await self._get_container(timeout)
+        self._container = await self._get_container(
+            workspace / "logs" / f"stdout-{timestamp}.txt", timeout
+        )
+
+        logger.info(f"Container {self._container.id} started")
 
         await self._start_envd(self.envd_port)
 
