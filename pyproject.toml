@@ -5,12 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp>=3.12.15",
     "claude-code-sdk>=0.0.20",
     "docker>=7.1.0",
     "fastapi>=0.116.1",
     "gitpython>=3.1.45",
+    "lark-oapi>=1.4.22",
     "loguru>=0.7.3",
+    "openai-agents>=0.2.11",
     "pydantic>=2.11.7",
+    "pydantic-settings>=2.10.1",
     "sarge>=0.1.7.post1",
     "uvicorn>=0.35.0",
 ]
