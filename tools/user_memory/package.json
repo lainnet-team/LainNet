@@ -1,0 +1,26 @@
+{
+  "name": "user-memory-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for managing Claude Code global memories in CLAUDE.md",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "memory",
+    "ai",
+    "tool"
+  ],
+  "author": "Lain Team",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
