@@ -1,5 +1,5 @@
 {
-    "dockerImage": "claude-code-sandbox:dev",
+    "dockerImage": "mob999/claude-code-sandbox:dev",
     "detached": false,
     "autoPush": false,
     "autoCreatePR": false,
