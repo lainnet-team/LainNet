@@ -1,5 +1,6 @@
 from src.packages.sandbox.cc import claude_sandbox_session
 
+
 class Lain:
     def __init__(self, sandbox_id: str, envd_port: int):
         self.sandbox_id = sandbox_id
