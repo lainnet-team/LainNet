@@ -2,6 +2,7 @@ import uuid
 from abc import ABC, abstractmethod
 
 from aiohttp import ClientSession
+from loguru import logger
 from pydantic import BaseModel, Field
 
 
@@ -28,6 +29,10 @@ class SandboxSession[TSandbox: Sandbox](ABC, BaseModel):
     async def send_request(self, method: str, path: str, **kwargs) -> dict:
         async with ClientSession(base_url=self.base_url) as session:
             response = await session.request(method, path, **kwargs)
+            body = await response.text()
+            if response.status >= 400:
+                logger.error(f"Request failed: {body}")
+                return {"error": body}
             return await response.json()
 
     async def __aenter__(self):
