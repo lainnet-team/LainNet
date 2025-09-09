@@ -2,6 +2,7 @@ import asyncio
 import json
 import pathlib
 import subprocess
+import os
 from datetime import datetime
 from typing import override
 
@@ -66,6 +67,9 @@ class ClaudeSandbox(Sandbox):
             f.write(json.dumps(config, indent=4))
         repo.index.add(["claude-sandbox.config.json"])
         repo.index.commit("Initial commit")
+        os.chown(workspace, os.getuid(), os.getgid())
+        os.chown(claude, os.getuid(), os.getgid())
+        os.chown(logs, os.getuid(), os.getgid())
         return False, workspace, logs
 
     async def _get_container(
