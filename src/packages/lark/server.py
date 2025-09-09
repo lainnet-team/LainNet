@@ -10,8 +10,9 @@ from lark_oapi.api.im.v1 import (
     ReplyMessageRequestBody,
     ReplyMessageResponse,
 )
+from loguru import logger
 
-from src.packages.lain.lain import Lain
+from src.packages.sandbox.cc import claude_sandbox_session
 from src.packages.utils.network import available_port
 from src.packages.utils.settings import Settings
 
@@ -26,12 +27,19 @@ async def handle_message_async(data: P2ImMessageReceiveV1) -> None:
     else:
         res_content = "解析消息失败，请发送文本消息\nparse message failed, please send text message"
 
-    lain = Lain(
-        sandbox_id=data.event.sender.sender_id.open_id, envd_port=available_port()
-    )
+    logger.info(f"res_content: {res_content}")
+    # lain = Lain(
+    #     sandbox_id=data.event.sender.sender_id.open_id, envd_port=available_port()
+    # )
 
-    # 异步调用 query 方法
-    resp = await lain.query(res_content)
+    # # 异步调用 query 方法
+    # resp = await lain.query(res_content)
+    async with claude_sandbox_session(
+        sandbox_id=data.event.sender.sender_id.open_id, envd_port=available_port()
+    ) as session:
+        resp = await session.query(res_content)
+
+    logger.info(f"query resp: {resp}")
     resp = (
         resp.get("response", "error: query failed")
         if isinstance(resp, dict)

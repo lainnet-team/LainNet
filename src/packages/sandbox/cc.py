@@ -71,7 +71,9 @@ class ClaudeSandbox(Sandbox):
     ) -> Container:
         for _ in range(timeout):
             if stdout_path.exists():
-                logger.info(f"Container {self.name} stdout file {stdout_path} found, starting...")
+                logger.info(
+                    f"Container {self.name} stdout file {stdout_path} found, starting..."
+                )
                 with open(stdout_path) as f:
                     for line in f:
                         if "Started container:" in line:
