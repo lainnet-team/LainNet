@@ -40,7 +40,7 @@ class ClaudeSandbox(Sandbox):
         claude.mkdir(parents=True, exist_ok=True)
         logs.mkdir(parents=True, exist_ok=True)
         if workspace.exists():
-            return True, workspace, logs
+            return True, workspace, logs, claude
 
         # Create a copy of the config to avoid mutating the global
         config = CLAUDE_SANDBOX_CONFIG.copy()
