@@ -173,13 +173,7 @@ class ClaudeSandbox(Sandbox):
         logger.info(f"Container {self._container.id} started")
 
         await self._start_envd(self.envd_port)
-        
-        logger.info(f"Changing ownership of workspace {workspace} to {os.getuid()}:{os.getgid()}")
-        os.chown(workspace, os.getuid(), os.getgid())
-        logger.info(f"Changing ownership of claude {claude} to {os.getuid()}:{os.getgid()}")
-        os.chown(claude, os.getuid(), os.getgid())
-        logger.info(f"Changing ownership of logs {logs} to {os.getuid()}:{os.getgid()}")
-        os.chown(logs, os.getuid(), os.getgid())
+    
 
     @override
     async def stop(self):
