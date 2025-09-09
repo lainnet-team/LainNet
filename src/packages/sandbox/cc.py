@@ -10,6 +10,7 @@ from loguru import logger
 
 from docker import DockerClient
 from docker.models.containers import Container
+from src.packages.utils.settings import Settings
 
 from .base import Sandbox, SandboxSession
 
@@ -31,9 +32,10 @@ class ClaudeSandbox(Sandbox):
         return f"lainnet-cc-{self.id}"
 
     def _init_workspace(self) -> tuple[bool, pathlib.Path]:
-        workspace = pathlib.Path("./workspaces").absolute() / self.name
-        claude = pathlib.Path("./claude").absolute() / self.name
-        logs = pathlib.Path("./logs").absolute() / self.name
+        tmp_dir = pathlib.Path(Settings().tmp_dir).absolute()
+        workspace = tmp_dir / "workspaces" / self.name
+        claude = tmp_dir / "claude" / self.name
+        logs = tmp_dir / "logs" / self.name
         claude.mkdir(parents=True, exist_ok=True)
         logs.mkdir(parents=True, exist_ok=True)
         if workspace.exists():

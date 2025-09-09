@@ -6,3 +6,4 @@ class Settings(BaseSettings):
     base_domain: str
     app_id: str
     app_secret: str
+    tmp_dir: str = "./tmp"
