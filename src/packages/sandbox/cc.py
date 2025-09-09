@@ -33,11 +33,11 @@ class ClaudeSandbox(Sandbox):
     def _init_workspace(self) -> tuple[bool, pathlib.Path]:
         workspace = pathlib.Path("./workspaces").absolute() / self.name
         claude = pathlib.Path("./claude").absolute() / self.name
-        logs = workspace / "logs"
+        logs = pathlib.Path("./logs").absolute() / self.name
         claude.mkdir(parents=True, exist_ok=True)
         logs.mkdir(parents=True, exist_ok=True)
         if workspace.exists():
-            return True, workspace
+            return True, workspace, logs
 
         # Create a copy of the config to avoid mutating the global
         config = CLAUDE_SANDBOX_CONFIG.copy()
@@ -64,14 +64,14 @@ class ClaudeSandbox(Sandbox):
             f.write(json.dumps(config, indent=4))
         repo.index.add(["claude-sandbox.config.json"])
         repo.index.commit("Initial commit")
-        return False, workspace
+        return False, workspace, logs
 
     async def _get_container(
         self, stdout_path: pathlib.Path, timeout: int = 60
     ) -> Container:
         for _ in range(timeout):
             if stdout_path.exists():
-                logger.info(f"Container {self.name} stdout file found, starting...")
+                logger.info(f"Container {self.name} stdout file {stdout_path} found, starting...")
                 with open(stdout_path) as f:
                     for line in f:
                         if "Started container:" in line:
@@ -83,6 +83,7 @@ class ClaudeSandbox(Sandbox):
                 logger.info(
                     f"Container {self.name} stdout file {stdout_path} not found, waiting for 1 second..."
                 )
+                await asyncio.sleep(1)
 
             logger.info(f"Container {self.name} not found, waiting for 1 second...")
             await asyncio.sleep(1)
@@ -139,7 +140,7 @@ class ClaudeSandbox(Sandbox):
 
     @override
     async def start(self, timeout: int = 60):
-        existed, workspace = self._init_workspace()
+        existed, workspace, logs = self._init_workspace()
         logger.info(f"workspace status: {'existed' if existed else 'new'}")
         cmd = [
             "claude-sandbox",
@@ -156,12 +157,12 @@ class ClaudeSandbox(Sandbox):
         self._process = subprocess.Popen(
             cmd,
             cwd=workspace,
-            stdout=open(workspace / "logs" / f"stdout-{timestamp}.txt", "w"),
-            stderr=open(workspace / "logs" / f"stderr-{timestamp}.txt", "w"),
+            stdout=open(logs / f"stdout-{timestamp}.txt", "w"),
+            stderr=open(logs / f"stderr-{timestamp}.txt", "w"),
         )
 
         self._container = await self._get_container(
-            workspace / "logs" / f"stdout-{timestamp}.txt", timeout
+            logs / f"stdout-{timestamp}.txt", timeout
         )
 
         logger.info(f"Container {self._container.id} started")
