@@ -67,10 +67,7 @@ class ClaudeSandbox(Sandbox):
             f.write(json.dumps(config, indent=4))
         repo.index.add(["claude-sandbox.config.json"])
         repo.index.commit("Initial commit")
-        os.chown(workspace, os.getuid(), os.getgid())
-        os.chown(claude, os.getuid(), os.getgid())
-        os.chown(logs, os.getuid(), os.getgid())
-        return False, workspace, logs
+        return False, workspace, logs, claude
 
     async def _get_container(
         self, stdout_path: pathlib.Path, timeout: int = 60
@@ -148,7 +145,7 @@ class ClaudeSandbox(Sandbox):
 
     @override
     async def start(self, timeout: int = 60):
-        existed, workspace, logs = self._init_workspace()
+        existed, workspace, logs, claude = self._init_workspace()
         logger.info(f"workspace status: {'existed' if existed else 'new'}")
         cmd = [
             "claude-sandbox",
@@ -176,6 +173,13 @@ class ClaudeSandbox(Sandbox):
         logger.info(f"Container {self._container.id} started")
 
         await self._start_envd(self.envd_port)
+        
+        logger.info(f"Changing ownership of workspace {workspace} to {os.getuid()}:{os.getgid()}")
+        os.chown(workspace, os.getuid(), os.getgid())
+        logger.info(f"Changing ownership of claude {claude} to {os.getuid()}:{os.getgid()}")
+        os.chown(claude, os.getuid(), os.getgid())
+        logger.info(f"Changing ownership of logs {logs} to {os.getuid()}:{os.getgid()}")
+        os.chown(logs, os.getuid(), os.getgid())
 
     @override
     async def stop(self):
