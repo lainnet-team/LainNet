@@ -44,23 +44,23 @@ class ClaudeSandbox(Sandbox):
 
         # Create a copy of the config to avoid mutating the global
         config = CLAUDE_SANDBOX_CONFIG.copy()
-        # config["mounts"] = config.get("mounts", []).copy()
-        # config["mounts"].extend(
-        #     [
-        #         {
-        #             "type": "bind",
-        #             "source": workspace.as_posix(),
-        #             "target": "/workspace",
-        #             "readonly": False,
-        #         },
-        #         {
-        #             "type": "bind",
-        #             "source": claude.as_posix(),
-        #             "target": "/home/claude/.claude",
-        #             "readonly": False,
-        #         },
-        #     ]
-        # )
+        config["mounts"] = config.get("mounts", []).copy()
+        config["mounts"].extend(
+            [
+                {
+                    "type": "bind",
+                    "source": workspace.as_posix(),
+                    "target": "/workspace",
+                    "readonly": False,
+                },
+                {
+                    "type": "bind",
+                    "source": claude.as_posix(),
+                    "target": "/home/claude/.claude",
+                    "readonly": False,
+                },
+            ]
+        )
 
         repo = Repo.init(workspace)
         with open(workspace / "claude-sandbox.config.json", "w") as f:
