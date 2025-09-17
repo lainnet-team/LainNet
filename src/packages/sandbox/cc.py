@@ -38,8 +38,10 @@ class ClaudeSandbox(Sandbox):
         logs = tmp_dir / "logs" / self.name
         claude.mkdir(parents=True, exist_ok=True)
         logs.mkdir(parents=True, exist_ok=True)
-        if workspace.exists():
-            return True, workspace, logs
+        
+        existed = workspace.exists()
+        # Always ensure workspace directory exists
+        workspace.mkdir(parents=True, exist_ok=True)
 
         # Create a copy of the config to avoid mutating the global
         config = CLAUDE_SANDBOX_CONFIG.copy()
@@ -58,15 +60,34 @@ class ClaudeSandbox(Sandbox):
                     "target": "/home/claude/.claude",
                     "readonly": False,
                 },
+                {
+                    "type": "bind",
+                    "source": (pathlib.Path(__file__).parent.parent.parent.parent / "docker/tools").absolute().as_posix(),
+                    "target": "/mcp_tools",
+                    "readonly": True,
+                },
             ]
         )
+        
+        # Add setupCommands for debugging
+        config["setupCommands"] = [
+            # Test that MCP tools directory is accessible
+            "ls -la /mcp_tools/",
+            
+            # Check Python version
+            "python3 --version"
+        ]
 
-        repo = Repo.init(workspace)
+        # Always update config file
         with open(workspace / "claude-sandbox.config.json", "w") as f:
             f.write(json.dumps(config, indent=4))
-        repo.index.add(["claude-sandbox.config.json"])
-        repo.index.commit("Initial commit")
-        return False, workspace, logs
+        
+        if not existed:
+            repo = Repo.init(workspace)
+            repo.index.add(["claude-sandbox.config.json"])
+            repo.index.commit("Initial commit")
+        
+        return existed, workspace, logs
 
     async def _get_container(
         self, stdout_path: pathlib.Path, timeout: int = 60
@@ -76,7 +97,7 @@ class ClaudeSandbox(Sandbox):
                 logger.info(
                     f"Container {self.name} stdout file {stdout_path} found, starting..."
                 )
-                with open(stdout_path) as f:
+                with open(stdout_path, 'r', encoding='utf-8', errors='replace') as f:
                     for line in f:
                         if "Started container:" in line:
                             logger.info(f"Container {self.name} found, starting...")
