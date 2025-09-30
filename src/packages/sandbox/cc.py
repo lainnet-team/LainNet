@@ -21,11 +21,14 @@ class ClaudeSandboxError(Exception): ...
 
 
 class ClaudeSandbox(Sandbox):
-    def __init__(self, **kwargs):
+    def __init__(self, keep_alive: bool = False, ttl: int = 600, **kwargs):
         super().__init__(**kwargs)
         self._client: DockerClient = DockerClient()
         self._container: Container = None
         self._process = None
+        self.keep_alive = keep_alive
+        self.ttl = ttl
+        self.last_used = None
 
     @property
     def name(self):
@@ -208,14 +211,28 @@ class ClaudeSandbox(Sandbox):
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback):
-        logger.info(f"Stopping sandbox {self.name}...")
-        await self.stop()
+        if not self.keep_alive:
+            logger.info(f"Stopping sandbox {self.name}...")
+            await self.stop()
+        else:
+            logger.info(f"Keeping sandbox {self.name} alive for reuse")
+            self.last_used = datetime.now()
 
     async def exec(self, cmd: list[str]) -> str:
         if self._container is None:
             raise ClaudeSandboxError("Exec Failed: Sandbox not found")
         result = self._container.exec_run(cmd)
         return result.exit_code, result.output
+    
+    def is_alive(self) -> bool:
+        """Check if the container is still running."""
+        if self._container is None:
+            return False
+        try:
+            self._container.reload()
+            return self._container.status == "running"
+        except Exception:
+            return False
 
 
 class ClaudeSandboxSession(SandboxSession[ClaudeSandbox]):
