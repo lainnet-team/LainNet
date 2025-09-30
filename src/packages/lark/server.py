@@ -18,6 +18,7 @@ from src.packages.sandbox.cc import claude_sandbox_session
 from src.packages.sandbox.container_manager import get_container_manager, cleanup_task
 from src.packages.utils.network import available_port
 from src.packages.utils.settings import Settings
+from src.packages.lark.card_builder import CardBuilder, CardStatus
 
 settings = Settings()
 
@@ -28,9 +29,10 @@ container_manager = get_container_manager(ttl=600)  # 10 minutes TTL
 cleanup_task_handle = None
 
 
-async def send_initial_message(chat_id: str, chat_type: str, message_id: str = None, text: str = "🤖 Lain 正在开机...") -> str:
-    """Send initial message and return message ID."""
-    content = json.dumps({"text": text})
+async def send_initial_card(chat_id: str, chat_type: str, message_id: str = None, status: CardStatus = CardStatus.BOOTING) -> str:
+    """Send initial card message and return message ID."""
+    card = CardBuilder.create_initial_card(status)
+    content = CardBuilder.to_json_string(card)
     
     if chat_type == "p2p":
         request = (
@@ -39,7 +41,7 @@ async def send_initial_message(chat_id: str, chat_type: str, message_id: str = N
             .request_body(
                 CreateMessageRequestBody.builder()
                 .receive_id(chat_id)
-                .msg_type("text")
+                .msg_type("interactive")
                 .content(content)
                 .build()
             )
@@ -56,7 +58,7 @@ async def send_initial_message(chat_id: str, chat_type: str, message_id: str = N
             .request_body(
                 ReplyMessageRequestBody.builder()
                 .content(content)
-                .msg_type("text")
+                .msg_type("interactive")
                 .build()
             )
             .build()
@@ -65,6 +67,25 @@ async def send_initial_message(chat_id: str, chat_type: str, message_id: str = N
         if response.success():
             return response.data.message_id
     return None
+
+
+async def update_card(message_id: str, card: dict):
+    """Update an existing card message."""
+    content = CardBuilder.to_json_string(card)
+    request = (
+        PatchMessageRequest.builder()
+        .message_id(message_id)
+        .request_body(
+            PatchMessageRequestBody.builder()
+            .content(content)
+            .build()
+        )
+        .build()
+    )
+    response = client.im.v1.message.patch(request)
+    if not response.success():
+        logger.error(f"Failed to update card: {response.msg}")
+    return response.success()
 
 
 async def send_follow_up_message(chat_id: str, text: str):
@@ -105,14 +126,13 @@ async def handle_message_async(data: P2ImMessageReceiveV1) -> None:
     
     # Flag to track if we're creating a new container
     creating_new = False
-    initial_msg_sent = False
+    card_msg_id = None
     
     async def on_creating():
-        nonlocal creating_new, initial_msg_sent
+        nonlocal creating_new, card_msg_id
         creating_new = True
-        # Send initial message when creating new container
-        await send_initial_message(chat_id, chat_type, message_id, "🤖 Lain 正在开机...")
-        initial_msg_sent = True
+        # Send initial card when creating new container
+        card_msg_id = await send_initial_card(chat_id, chat_type, message_id, CardStatus.BOOTING)
     
     try:
         # Get or create session using container manager
@@ -122,58 +142,126 @@ async def handle_message_async(data: P2ImMessageReceiveV1) -> None:
             on_creating=on_creating
         )
         
-        # If we reused a container, send thinking message
-        if not creating_new and not initial_msg_sent:
-            await send_initial_message(chat_id, chat_type, message_id, "💭 正在思考...")
-            initial_msg_sent = True
+        # If we reused a container, send thinking card
+        if not creating_new:
+            card_msg_id = await send_initial_card(chat_id, chat_type, message_id, CardStatus.THINKING)
         
-        # Query the AI
-        resp = await session.query(res_content)
+        # Update card to show generating status
+        if card_msg_id:
+            generating_card = CardBuilder.create_status_card(CardStatus.GENERATING)
+            await update_card(card_msg_id, generating_card)
         
-        logger.info(f"query resp: {resp}")
-        resp_text = (
-            resp.get("response", "error: query failed")
-            if isinstance(resp, dict)
-            else str(resp)
-        )
+        # Stream the AI response
+        resp_text = ""
+        update_counter = 0
+        streaming_success = False
+        try:
+            async for data in session.query_stream(res_content):
+                if data.get("content"):
+                    resp_text = data["content"]
+                    update_counter += 1
+                    
+                    # Update card every 5 chunks or when done
+                    if update_counter % 5 == 0 or data.get("done", False):
+                        if card_msg_id:
+                            status = CardStatus.COMPLETED if data.get("done") else CardStatus.GENERATING
+                            streaming_card = CardBuilder.create_response_card(resp_text, status)
+                            await update_card(card_msg_id, streaming_card)
+                    
+                    if data.get("done"):
+                        streaming_success = True
+                        break
+        except Exception as e:
+            # Fallback to non-streaming mode
+            logger.warning(f"Streaming failed, falling back to non-streaming: {e}")
+            resp = await session.query(res_content)
+            logger.info(f"query resp: {resp}")
+            resp_text = (
+                resp.get("response", "error: query failed")
+                if isinstance(resp, dict)
+                else str(resp)
+            )
+            
+            # Update card with final response
+            if card_msg_id:
+                final_card = CardBuilder.create_response_card(resp_text, CardStatus.COMPLETED)
+                await update_card(card_msg_id, final_card)
         
-        # Send final response
-        content = json.dumps({"text": resp_text})
-        if chat_type == "p2p":
-            request = (
-                CreateMessageRequest.builder()
-                .receive_id_type("chat_id")
-                .request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(chat_id)
-                    .msg_type("text")
-                    .content(content)
+        # Only send new card if we don't have a card_msg_id and didn't stream successfully
+        if not card_msg_id and not streaming_success:
+            # Fallback: send as new card if we don't have message ID
+            final_card = CardBuilder.create_response_card(resp_text, CardStatus.COMPLETED)
+            content = CardBuilder.to_json_string(final_card)
+            
+            if chat_type == "p2p":
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("interactive")
+                        .content(content)
+                        .build()
+                    )
                     .build()
                 )
-                .build()
-            )
-            response = client.im.v1.message.create(request)
-            if not response.success():
-                logger.error(f"Failed to send response: {response.msg}")
-        else:
-            request = (
-                ReplyMessageRequest.builder()
-                .message_id(message_id)
-                .request_body(
-                    ReplyMessageRequestBody.builder()
-                    .content(content)
-                    .msg_type("text")
+                response = client.im.v1.message.create(request)
+                if not response.success():
+                    logger.error(f"Failed to send response: {response.msg}")
+            else:
+                request = (
+                    ReplyMessageRequest.builder()
+                    .message_id(message_id)
+                    .request_body(
+                        ReplyMessageRequestBody.builder()
+                        .content(content)
+                        .msg_type("interactive")
+                        .build()
+                    )
                     .build()
                 )
-                .build()
-            )
-            response = client.im.v1.message.reply(request)
-            if not response.success():
-                logger.error(f"Failed to send response: {response.msg}")
+                response = client.im.v1.message.reply(request)
+                if not response.success():
+                    logger.error(f"Failed to send response: {response.msg}")
         
     except Exception as e:
         logger.error(f"Error handling message: {e}")
-        await send_follow_up_message(chat_id, f"❌ 处理消息时出错: {str(e)}")
+        # Send or update error card
+        if card_msg_id:
+            error_card = CardBuilder.create_error_card(str(e))
+            await update_card(card_msg_id, error_card)
+        else:
+            # Send new error card
+            error_card = CardBuilder.create_error_card(str(e))
+            content = CardBuilder.to_json_string(error_card)
+            if chat_type == "p2p":
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("interactive")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                client.im.v1.message.create(request)
+            else:
+                request = (
+                    ReplyMessageRequest.builder()
+                    .message_id(message_id)
+                    .request_body(
+                        ReplyMessageRequestBody.builder()
+                        .content(content)
+                        .msg_type("interactive")
+                        .build()
+                    )
+                    .build()
+                )
+                client.im.v1.message.reply(request)
 
     # Message sending/updating is now handled inside the handle_message_async function
 

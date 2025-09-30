@@ -23,7 +23,19 @@ class ContainerManager:
         self.ttl = ttl
         self._containers: Dict[str, Tuple[ClaudeSandbox, float]] = {}  # {user_id: (container, last_used_time)}
         self._sessions: Dict[str, ClaudeSandboxSession] = {}  # {user_id: session}
-        self._lock = asyncio.Lock()
+        self._lock = None  # Will be created lazily in the correct event loop
+        
+    def _get_lock(self):
+        """Get or create lock in the current event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+            # Create a new lock if we don't have one or if it's from a different loop
+            if self._lock is None or self._lock._loop != loop:
+                self._lock = asyncio.Lock()
+        except RuntimeError:
+            # No running loop, create a new lock
+            self._lock = asyncio.Lock()
+        return self._lock
         
     async def get_or_create_session(
         self, 
@@ -42,7 +54,7 @@ class ContainerManager:
         Returns:
             ClaudeSandboxSession ready for use
         """
-        async with self._lock:
+        async with self._get_lock():
             # Check if container exists and is not expired
             if user_id in self._containers:
                 container, last_used = self._containers[user_id]
@@ -103,7 +115,7 @@ class ContainerManager:
         Returns:
             Number of containers cleaned up
         """
-        async with self._lock:
+        async with self._get_lock():
             current_time = time.time()
             expired_users = [
                 user_id 
@@ -121,7 +133,7 @@ class ContainerManager:
     
     async def cleanup_all(self):
         """Clean up all containers (for shutdown)."""
-        async with self._lock:
+        async with self._get_lock():
             user_ids = list(self._containers.keys())
             for user_id in user_ids:
                 await self._cleanup_container(user_id)

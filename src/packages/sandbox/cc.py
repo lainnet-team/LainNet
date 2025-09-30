@@ -245,6 +245,26 @@ class ClaudeSandboxSession(SandboxSession[ClaudeSandbox]):
                 "continue_conversation": continue_conversation,
             },
         )
+    
+    async def query_stream(self, query: str, continue_conversation: bool = True):
+        """Stream query responses using Server-Sent Events"""
+        import aiohttp
+        import json
+        
+        url = f"{self.base_url}/query_stream"
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, 
+                json={
+                    "query": query,
+                    "continue_conversation": continue_conversation,
+                }
+            ) as response:
+                async for line in response.content:
+                    decoded_line = line.decode('utf-8').strip()
+                    if decoded_line.startswith('data: '):
+                        data = json.loads(decoded_line[6:])
+                        yield data
 
 
 def claude_sandbox_session(sandbox_id: str, envd_port: int):
