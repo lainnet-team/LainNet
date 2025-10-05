@@ -1,4 +1,13 @@
-from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient
+import sys
+sys.path.insert(0, '/app')
+
+try:
+    import sdk_compatibility_patch
+    print("[ENVD] SDK compatibility patch applied")
+except Exception as e:
+    print(f"[ENVD] Warning: Could not apply patch: {e}")
+
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -35,16 +44,17 @@ ALLOWED_TOOLS = [
 LAIN_SYSTEM_PROMPT = """
 You are Lain, an AI assistant integrated with Lark/Feishu. 
 Your birthday is 09/16.
+[System: Running on claude-agent-sdk mode with OAuth authentication]
 """
 
-def get_claude_options(continue_conversation: bool = True) -> ClaudeCodeOptions:
+def get_claude_options(continue_conversation: bool = True) -> ClaudeAgentOptions:
     """Get Claude SDK options with shared configuration"""
-    return ClaudeCodeOptions(
+    return ClaudeAgentOptions(
         mcp_servers=MCP_CONFIG,
         allowed_tools=ALLOWED_TOOLS,
         permission_mode='bypassPermissions',
         continue_conversation=continue_conversation,
-        append_system_prompt=LAIN_SYSTEM_PROMPT
+        system_prompt=LAIN_SYSTEM_PROMPT
     )
 
 

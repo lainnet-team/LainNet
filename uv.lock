@@ -129,15 +129,16 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-code-sdk"
-version = "0.0.20"
+name = "claude-agent-sdk"
+version = "0.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
+    { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/c3/d40cf8bab3a5c75051914094990cff0a36ad13e4a2fe9ed85dbb4233a225/claude_code_sdk-0.0.20.tar.gz", hash = "sha256:5f9872f105563db8975de48ddc88c948d9c5e1244addca02241d6fcd2a47b3d6", size = 24329, upload-time = "2025-08-11T15:21:26.009Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/21/9466f7c38cf02f0a4e5ddeeba7450ef4cddbf21945d2497eac4637f463dc/claude_agent_sdk-0.1.0.tar.gz", hash = "sha256:f60d148f8e9f69991582863a6cdbf337ff908c1bd7d5de2f7845eb830f72d2a5", size = 42827, upload-time = "2025-09-28T23:39:33.333Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/1d/fa06e77d4e7440d2f4998d8375eedc7dbb740d7e552d63f23c8b23661c91/claude_code_sdk-0.0.20-py3-none-any.whl", hash = "sha256:6183771f9663a47e9bda3c4f03e5619f2e41f9272a9e9bd9775bf2537177e4a0", size = 17575, upload-time = "2025-08-11T15:21:24.904Z" },
+    { url = "https://files.pythonhosted.org/packages/60/27/0081f232b1119d3973ce5301b31f407bb604ca4434152d39ff62b9e18a0c/claude_agent_sdk-0.1.0-py3-none-any.whl", hash = "sha256:92d9a83689a6a3a54f69aac1224dd2004109bf1fecd0272e2241251747afdb3d", size = 32635, upload-time = "2025-09-28T23:39:32.184Z" },
 ]
 
 [[package]]
@@ -401,7 +402,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "claude-code-sdk" },
+    { name = "claude-agent-sdk" },
     { name = "docker" },
     { name = "fastapi" },
     { name = "gitpython" },
@@ -418,7 +419,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.15" },
-    { name = "claude-code-sdk", specifier = ">=0.0.20" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.0" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "fastapi", specifier = ">=0.116.1" },
     { name = "gitpython", specifier = "==3.1.43" },
