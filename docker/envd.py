@@ -1,4 +1,5 @@
 import sys
+import os
 sys.path.insert(0, '/app')
 
 try:
@@ -6,6 +7,15 @@ try:
     print("[ENVD] SDK compatibility patch applied")
 except Exception as e:
     print(f"[ENVD] Warning: Could not apply patch: {e}")
+
+# Initialize LainTracer if enabled
+if os.getenv('LAIN_TRACE_ENABLED') == '1':
+    try:
+        import lain_tracer
+        lain_tracer.init_tracer(layer='main_agent')
+        print("[ENVD] LainTracer initialized for main_agent")
+    except Exception as e:
+        print(f"[ENVD] Warning: Could not initialize tracer: {e}")
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from fastapi import FastAPI

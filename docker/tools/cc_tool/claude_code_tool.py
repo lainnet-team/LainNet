@@ -7,6 +7,7 @@ import json
 import uuid
 import asyncio
 import sys
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +17,15 @@ try:
     import sdk_compatibility_patch
 except Exception:
     pass  # Patch may not be needed in some environments
+
+# Initialize LainTracer if enabled
+if os.getenv('LAIN_TRACE_ENABLED') == '1':
+    try:
+        import lain_tracer
+        lain_tracer.init_tracer(layer='cc_tool')
+        print("[CC_TOOL] LainTracer initialized for cc_tool")
+    except Exception as e:
+        print(f"[CC_TOOL] Warning: Could not initialize tracer: {e}")
 
 from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock, ToolUseBlock, SystemMessage
 from cc_tool_sp import cc_tool_sp
