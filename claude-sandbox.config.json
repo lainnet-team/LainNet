@@ -4,7 +4,9 @@
     "autoPush": false,
     "autoCreatePR": false,
     "autoStartClaude": false,
-    "environment": {},
+    "environment": {
+        "LAIN_TRACE_ENABLED": "1"
+    },
     "setupCommands": [],
     "mounts": [],
     "allowedTools": ["*"],

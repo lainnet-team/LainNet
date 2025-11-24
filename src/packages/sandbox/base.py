@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 class Sandbox(ABC, BaseModel):
     envd_port: int
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    class Config:
+        extra = 'allow'  # Allow extra fields like keep_alive
 
     @abstractmethod
     def start(self):
